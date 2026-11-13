@@ -58,7 +58,8 @@ if __name__ == '__main__':
     arguments.add_argument('-c', '--clean_audio', action='store_true', help='Clean the imported recordings')
     arguments.add_argument('-v', '--validate_audio', action='store_true', help='Validate audio recording')
     arguments.add_argument('-t', '--transformations', action='store_true', help='Transform the data where necessary')
-    arguments.add_argument('-x', '--acoustics', action='store_true', help='Detect bird song')
+    arguments.add_argument('-x', '--acoustics', action='store',  choices=['predict', 'custom'],
+                           help='Detect bird song. Define if the species list needs to be predicted or if a custom list is needed')
     arguments.add_argument('-r', '--reports', action='store_true', help='Create report tables. Current reports will be overwritten')
     args = arguments.parse_args()
 
@@ -119,12 +120,17 @@ if __name__ == '__main__':
     if args.acoustics or args.all:
 
         logging.info('ACOUSTICS')
+        # ``--all`` retains the established behaviour of using BirdNET's geo
+        # model, while an explicit acoustics invocation selects its own mode.
+        geo_mode = args.acoustics or 'predict'
         while True:
             result = subprocess.run(
                 [
                     sys.executable,
                     "-m",
-                    "acoustics.birdnet_worker"
+                    "acoustics.birdnet_worker",
+                    "--geo-mode",
+                    geo_mode,
                 ],
                 check=False,
             )
@@ -164,5 +170,4 @@ if __name__ == '__main__':
                  f'\t\tStarted at= {pipeline_start_time}\n'
                  f'\t\tStopped at= {pipeline_stop_time}\n'
                  f'\t\tTotal runtime= {total_runtime}\n')
-
 

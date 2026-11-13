@@ -1,4 +1,6 @@
+import csv
 import logging
+from pathlib import Path
 
 class GeoPrediction:
 
@@ -67,3 +69,45 @@ class GeoPrediction:
 
         else:
             return birdnet_id
+
+
+class CustomSpeciesListPrediction(GeoPrediction):
+    """A CSV-backed species list with the same interface as geo predictions.
+
+    BirdNET's acoustic model only needs a set of labels.  Keeping this small
+    adapter compatible with :class:`GeoPrediction` also lets the normal
+    detection transformation store a geo-confidence value for custom lists.
+    """
+
+    DEFAULT_CONFIDENCE = 1.0
+
+    def __init__(self, species, detection_service):
+        self.species = frozenset(species)
+        self.detection_service = detection_service
+
+    @classmethod
+    def from_csv(cls, path, detection_service):
+        """Load one BirdNET species label per row from ``path``."""
+        with Path(path).open(newline='', encoding='utf-8-sig') as species_file:
+            species = [
+                row[0].strip()
+                for row in csv.reader(species_file)
+                if row and row[0].strip()
+            ]
+
+        if not species:
+            raise ValueError(f'Custom species list is empty: {path}')
+
+        return cls(species, detection_service)
+
+    def get_prediction_as_set(self):
+        """Return the BirdNET labels accepted by the acoustic model."""
+        return set(self.species)
+
+    def get_confidence(self, species):
+        """Return the fixed confidence assigned to a custom-list species."""
+        if species not in self.species:
+            logging.error(f'Species {species} is not present in the custom species list.')
+            return None, None
+
+        return self.DEFAULT_CONFIDENCE, self.get_species_id(species)

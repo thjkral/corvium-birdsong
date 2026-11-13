@@ -35,7 +35,7 @@ class Engine:
                                    pool_pre_ping=True,
                                    pool_recycle=3600,
                                    )
-            logging.info(f'Engine created successfully')
+            logging.info(f'Engine created successfully for database: {self.database}')
             return engine
         except Exception as err:
             logging.critical(f'Cannot create engine:\n{err}')

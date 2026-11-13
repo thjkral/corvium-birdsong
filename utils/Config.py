@@ -29,6 +29,7 @@ class BirdnetConfig:
     overlap_s: float
     model_version: str
     media_root: str
+    geo_mode: str
 
     def __post_init__(self):  # force datatypes
         self.workers = int(self.workers)
@@ -36,6 +37,7 @@ class BirdnetConfig:
         self.overlap_s = float(self.overlap_s)
         self.model_version = str(self.model_version)
         self.media_root = str(self.media_root)
+        self.geo_mode = str(self.geo_mode)
 
 @dataclass
 class GeoConfig:

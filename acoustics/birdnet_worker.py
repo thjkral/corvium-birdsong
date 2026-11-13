@@ -1,9 +1,11 @@
+import argparse
 import errno
 import logging
 import os
 import resource
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import dotenv
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from .AcousticPrediction import AcousticPrediction
 from database.DetectionService import DetectionService
 from database.Engine import Engine
-from .GeoPrediction import GeoPrediction
+from .GeoPrediction import CustomSpeciesListPrediction, GeoPrediction
 from utils.Config import (DatabaseConfig, BirdnetConfig, GeoConfig)
 
 FD_SAFETY_FRACTION = 0.80
@@ -20,6 +22,10 @@ EXIT_NO_RECORDINGS_REMAIN = 1
 EXIT_FD_LIMIT_REACHED = 2
 EXIT_DATABASE_ERROR = 3
 EXIT_UNEXPECTED_ERROR = 4
+CUSTOM_SPECIES_LIST_PATH = (
+    Path(__file__).resolve().parents[1]
+    / 'utils/files/custom_bird_list_V2.4_Labels_nl_Hart van Drenthe.csv'
+)
 
 
 def birdnet_week(dt):
@@ -77,7 +83,11 @@ def _fd_limit_reached():
 
 
 def run(database_config, acoustic_config, geo_config, batch_size):
-    logging.info('Starting BirdNET worker; batch size: %s', batch_size)
+    logging.info(
+        'Starting BirdNET worker; batch size: %s; geo mode: %s',
+        batch_size,
+        acoustic_config.geo_mode,
+    )
 
     fd_count, threshold, soft_limit = _fd_usage_and_threshold()
     if threshold is None:
@@ -103,13 +113,28 @@ def run(database_config, acoustic_config, geo_config, batch_size):
     logging.info('Setting up the birdnet models')
     import birdnet
 
-    geo_model = birdnet.load("geo", geo_config.model_version, "tf", lang='nl')
+    geo_model = None
+    custom_species_predictor = None
+    if acoustic_config.geo_mode == 'predict':
+        geo_model = birdnet.load("geo", geo_config.model_version, "tf", lang='nl')
+    elif acoustic_config.geo_mode == 'custom':
+        custom_species_predictor = CustomSpeciesListPrediction.from_csv(
+            CUSTOM_SPECIES_LIST_PATH,
+            detection_service,
+        )
+        logging.info(
+            'Loaded %s species from custom BirdNET list',
+            len(custom_species_predictor.species),
+        )
+    else:
+        raise ValueError(f'Unsupported geo mode: {acoustic_config.geo_mode}')
     model = birdnet.load("acoustic", acoustic_config.model_version, "tf", lang='nl')
 
     recordings['week_number'] = recordings.apply(
         lambda row: birdnet_week(row['timestamp']),
         axis=1,
     )
+    recordings = recordings.sort_values(['week_number', 'mic_id'], kind='stable')
     no_of_detections = 0
     processed_recordings = 0
 
@@ -127,16 +152,19 @@ def run(database_config, acoustic_config, geo_config, batch_size):
                 (recordings['week_number'] == week_number)
                 & (recordings['mic_id'] == mic_id)
             ]
-            mic_location = detection_service.get_microphone_location(mic_id)
-            geo_predictor = GeoPrediction(
-                geo_model,
-                mic_location.get('latitude'),
-                mic_location.get('longitude'),
-                week_number,
-                geo_config.min_confidence,
-                detection_service,
-            )
-            geo_predictor.predict()
+            if acoustic_config.geo_mode == 'predict':
+                mic_location = detection_service.get_microphone_location(mic_id)
+                species_predictor = GeoPrediction(
+                    geo_model,
+                    mic_location.get('latitude'),
+                    mic_location.get('longitude'),
+                    week_number,
+                    geo_config.min_confidence,
+                    detection_service,
+                )
+                species_predictor.predict()
+            else:
+                species_predictor = custom_species_predictor
 
             for _, recording in recordings_subset.iterrows():
                 if _fd_limit_reached():
@@ -160,7 +188,7 @@ def run(database_config, acoustic_config, geo_config, batch_size):
                 acoustic_predictor = AcousticPrediction(
                     model=model,
                     file_path=file_absolute_path,
-                    custom_species_list=geo_predictor.get_prediction_as_set(),
+                    custom_species_list=species_predictor.get_prediction_as_set(),
                     config=acoustic_config
                 )
                 acoustic_predictor.predict()
@@ -171,7 +199,7 @@ def run(database_config, acoustic_config, geo_config, batch_size):
                 else:
                     predictions_df = acoustic_predictor.transform_dataframe(
                         recording['file_id'],
-                        geo_predictor,
+                        species_predictor,
                         week_number,
                     )
                     no_of_detections += len(predictions_df)
@@ -191,7 +219,16 @@ def run(database_config, acoustic_config, geo_config, batch_size):
     return EXIT_BATCH_COMPLETED
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Run one BirdNET worker batch.')
+    parser.add_argument(
+        '--geo-mode',
+        choices=['predict', 'custom'],
+        default='predict',
+        help='Predict a species list from geography or use the bundled custom list.',
+    )
+    args = parser.parse_args(argv)
+
     # load configs
     dotenv.load_dotenv('/etc/bird_audio_pipeline.conf')
     database_config = DatabaseConfig(
@@ -207,6 +244,7 @@ def main():
         os.getenv('BIRDNET_OVERLAP'),
         os.getenv('BIRDNET_MODEL_VERSION'),
         os.getenv('STORE_LOCATION'),
+        args.geo_mode,
     )
     birdnet_geo_config = GeoConfig(
         os.getenv('GEO_MODEL_VERSION'),
