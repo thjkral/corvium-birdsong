@@ -52,4 +52,6 @@ CREATE TABLE IF NOT EXISTS core_agg_device_overview AS (
         GROUP BY recs.microphone_id
     ) AS dets
         ON device.device_id = dets.microphone_id
+
+WHERE device.observation_array <> 0 -- filter out older devices
 );
