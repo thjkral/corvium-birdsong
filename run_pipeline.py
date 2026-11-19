@@ -13,15 +13,20 @@ from datetime import datetime
 from pathlib import Path
 
 from utils.Config import (DatabaseConfig, LoadConfig)
+from utils import validate_custom_species_list
 from audio_intake import load_audio
 from clean_and_validate import clean_audio
 from transformations import transform
 from reports import make_reports
-from database import Engine, DatabaseMaintenance
+from database import DetectionService, Engine, DatabaseMaintenance
 
 from corvium_core.database.setup import initialize_database, populate_core_tables
 
 BIRDNET_BATCH_SIZE = 250
+CUSTOM_SPECIES_LIST_PATH = (
+    Path(__file__).resolve().parent
+    / 'utils/files/custom_bird_list_V2.4_Labels_nl_Hart van Drenthe.csv'
+)
 
 def _get_db_credentials_dict():
     db_credentials_dict = {'user': os.getenv('DATABASE_USER'),
@@ -123,6 +128,23 @@ if __name__ == '__main__':
         # ``--all`` retains the established behaviour of using BirdNET's geo
         # model, while an explicit acoustics invocation selects its own mode.
         geo_mode = args.acoustics or 'predict'
+        if geo_mode == 'custom':
+            unresolved_species = validate_custom_species_list(
+                CUSTOM_SPECIES_LIST_PATH,
+                DetectionService(db_engine.engine),
+            )
+            if unresolved_species:
+                logging.critical(
+                    'Custom BirdNET list contains species that cannot be '
+                    'resolved in the database:\n%s',
+                    '\n'.join(f'  - {species}' for species in unresolved_species),
+                )
+                raise RuntimeError(
+                    'BirdNET detection stopped: custom species list does not '
+                    'match the database.'
+                )
+            logging.info('Custom BirdNET species list matches the database.')
+
         while True:
             result = subprocess.run(
                 [
