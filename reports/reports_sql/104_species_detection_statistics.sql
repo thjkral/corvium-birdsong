@@ -8,7 +8,7 @@ WITH recording_day AS (
         rec.microphone_id,
         season.name_nl AS season_name_nl,
         COUNT(*) AS total_recordings
-    FROM audio_Recording_final AS rec
+    FROM audio_prefilter_recordings AS rec
     JOIN core_Season AS season
         ON (
             season.wraps_year = 0
@@ -37,8 +37,8 @@ species_detection_day AS (
         season.name_nl AS season_name_nl,
         COUNT(DISTINCT detection.recording_id) AS positive_recordings,
         COUNT(*) AS total_detections
-    FROM audio_Detection AS detection
-    JOIN audio_Recording_final AS rec
+    FROM audio_prefilter_detections AS detection
+    JOIN audio_prefilter_recordings AS rec
         ON rec.id = detection.recording_id
     JOIN core_Season AS season
         ON (
@@ -70,7 +70,7 @@ species_list AS (
     FROM audio_BirdSpecies AS species
     WHERE EXISTS (
         SELECT 1
-        FROM audio_Detection AS detection
+        FROM audio_prefilter_detections AS detection
         WHERE detection.birdnet_id = species.birdnet_id
     )
 )

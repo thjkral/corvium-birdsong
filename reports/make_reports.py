@@ -1,16 +1,46 @@
 from pathlib import Path
 import logging
+import re
+from time import perf_counter
 
 from sqlalchemy import text
+
+
+SQL_SCRIPT_PREFIX = re.compile(r"^\d{3}_")
+
+
+def _format_duration(duration_seconds):
+    """Format a duration as hours, minutes, seconds, and milliseconds."""
+    total_milliseconds = int(duration_seconds * 1000)
+    total_seconds, milliseconds = divmod(total_milliseconds, 1000)
+    hours, remaining_seconds = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remaining_seconds, 60)
+    return (
+        f"{hours} H, {minutes} M, {seconds} S "
+        f"and {milliseconds} ms"
+    )
 
 
 def _get_sql_scripts():
     """Return report SQL filenames paired with their absolute paths."""
     scripts_directory = Path(__file__).resolve().parent / "reports_sql"
+    sql_scripts = []
+    for script in scripts_directory.iterdir():
+        if not script.is_file() or script.suffix != ".sql":
+            continue
+        if not SQL_SCRIPT_PREFIX.match(script.name):
+            logging.warning(
+                "Skipping SQL script with invalid filename prefix: %s", script.name
+            )
+            continue
+        sql_scripts.append(script)
+
     return [
         (script.name, str(script.resolve()))
-        for script in sorted(scripts_directory.iterdir())
-        if script.is_file()
+        for script in sorted(
+            sql_scripts,
+            key=lambda script: (int(script.name.split("_", 1)[0]), script.name),
+        )
     ]
 
 
@@ -69,10 +99,12 @@ def generate_reports(db_engine):
                 logging.warning('No SQL statements found in %s', report_name)
                 continue
 
+            logging.info('Generating report from %s', report_name)
+            start_time = perf_counter()
             with db_engine.begin() as connection:
                 for statement in statements:
                     connection.execute(text(statement))
+            duration = _format_duration(perf_counter() - start_time)
+            logging.info('Generated report from %s in %s', report_name, duration)
         except Exception as e:
             logging.exception(f'Error generating report: {report_name}:\n{e}')
-
-        logging.info('Generated report from %s', report_name)

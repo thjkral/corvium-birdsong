@@ -27,10 +27,10 @@ SELECT
                 "<br />",
                 "Recenste waarneming: ", MAX(MAX(rec.timestamp_DST_adjusted)) OVER (PARTITION BY bs.scientific_name)
                 ) AS Vogelinformatie
-    FROM audio_Detection AS d
+    FROM audio_prefilter_detections AS d
     JOIN audio_BirdSpecies as bs
         ON d.birdnet_id=bs.birdnet_id
-    JOIN audio_Recording_final AS rec
+    JOIN audio_prefilter_recordings AS rec
         ON d.recording_id=rec.id
     JOIN core_Media AS media
         ON rec.id=media.media_id
@@ -48,7 +48,6 @@ SELECT
             OR MONTH(rec.timestamp_DST_adjusted) <= s.stop_month
         )
     )
-    WHERE d.confidence_score >= 0.5 AND YEAR(rec.timestamp_DST_adjusted) >= 2025
-    GROUP BY rec.id, bs.image_url, bs.common_name_nl, bs.scientific_name, rec.timestamp_DST_adjusted, s.name_nl
+    GROUP BY rec.id, bs.image_url, bs.common_name_nl, bs.scientific_name, rec.timestamp_DST_adjusted, mic.device_id, s.name_nl
 
 );
