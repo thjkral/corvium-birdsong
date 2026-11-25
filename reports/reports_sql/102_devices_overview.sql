@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS core_agg_device_overview AS (
                                 device.latitude
                             )
                         ),
-                        'properties', JSON_OBJECT()
+                        'properties', JSON_OBJECT(
+                            'subtype', device.subtype
+                            )
                     )
                 )
             ) AS CHAR
