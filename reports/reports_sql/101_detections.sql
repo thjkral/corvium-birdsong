@@ -8,10 +8,10 @@ CREATE TABLE IF NOT EXISTS audio_agg_Detections AS (
         HOUR(rec.timestamp_DST_adjusted) AS Uur,
         s.name_nl AS Seizoen,
         COUNT(*) AS Aantal
-    FROM audio_Detection AS d
+    FROM audio_prefilter_detections AS d
     JOIN audio_BirdSpecies as bs
         ON d.birdnet_id=bs.birdnet_id
-    JOIN audio_Recording_final AS rec
+    JOIN audio_prefilter_recordings AS rec
         ON d.recording_id=rec.id
     JOIN core_Season AS s
     ON (
@@ -25,6 +25,5 @@ CREATE TABLE IF NOT EXISTS audio_agg_Detections AS (
             OR MONTH(rec.timestamp_DST_adjusted) <= s.stop_month
         )
     )
-    WHERE d.confidence_score >= 0.5 AND YEAR(rec.timestamp_DST_adjusted) >= 2025
     GROUP BY bs.common_name_nl, rec.timestamp_DST_adjusted, s.name_nl
 );

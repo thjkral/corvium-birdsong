@@ -15,10 +15,10 @@ CREATE TABLE IF NOT EXISTS audio_agg_Rare_Observations AS (
             '" target="_blank">Speel af</a>'
             ) AS Opname,
         COUNT(*) AS Aantal
-    FROM audio_Detection as d
+    FROM audio_prefilter_detections as d
     LEFT JOIN audio_BirdSpecies AS species
         ON d.birdnet_id=species.birdnet_id
-    LEFT JOIN audio_Recording_final AS rec
+    LEFT JOIN audio_prefilter_recordings AS rec
         ON d.recording_id=rec.id
     LEFT JOIN core_GeoConfidenceFlag AS flag
         ON d.geo_confidence_score >= flag.min_value AND d.geo_confidence_score <= flag.max_value
@@ -36,6 +36,6 @@ CREATE TABLE IF NOT EXISTS audio_agg_Rare_Observations AS (
         )
     JOIN core_Media AS media
         ON rec.id=media.media_id
-    WHERE d.confidence_score >= 0.5 AND d.geo_confidence_score < 0.2  AND YEAR(rec.timestamp_DST_adjusted) >= 2025
+    WHERE d.geo_confidence_score < 0.2
     GROUP BY species.common_name_nl, rec.timestamp_DST_adjusted, flag.name_nl, s.name_nl, d.birdnet_week_number, media.relative_filepath
 );
